@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Автомойка: тайкун</title>
+<style>
+:root{--bg:#e6f5f9;--ink:#12304a;--card:#fff;--btn:#0a9fb2;--btn-ink:#fff;--coin:#ffd23f;--mute:#5d7a8c;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e2230;--ink:#e4f2f8;--card:#16354a;--btn:#12a4b8;--mute:#8fb0c2;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e2230;--ink:#e4f2f8;--card:#16354a;--btn:#12a4b8;--mute:#8fb0c2;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Trebuchet MS","Segoe UI",Roboto,sans-serif;padding:12px;max-width:760px;margin:0 auto}
+#hud{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.chip{background:var(--card);border-radius:12px;padding:8px 12px;font-weight:700;flex:1;min-width:90px;text-align:center}
+.chip small{display:block;font-weight:400;color:var(--mute);font-size:11px}
+canvas{width:100%;display:block;border-radius:14px;touch-action:manipulation;background:#bfe6f2}
+#hint{color:var(--mute);font-size:13px;margin:8px 2px}
+#ups{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+button{font:inherit;background:var(--btn);color:var(--btn-ink);border:0;border-radius:12px;padding:10px;text-align:left;cursor:pointer}
+button b{display:block}
+button span{color:var(--coin);font-weight:700}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible{outline:3px solid var(--coin);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div class="chip" id="m">$0<small>деньги</small></div>
+  <div class="chip" id="r">0%<small>репутация</small></div>
+  <div class="chip" id="d">День 1<small id="g">цель: $2500</small></div>
+</div>
+<canvas id="c" width="640" height="380"></canvas>
+<p id="hint">Нажимай на машину в боксе, чтобы мыть быстрее. Клиенты не любят ждать.</p>
+<div id="ups"></div>
+<script>
+const cv=document.getElementById('c'),g=cv.getContext('2d'),W=640;
+const S={money:40,rep:60,t:0,bays:1,spd:0,prc:0,ad:0,earned:0,won:false};
+const cars=[],queue=[],bayCar=[null,null,null,null,null,null],parts=[],floats=[];
+const cols=['#e4572e','#f2b134','#2e86ab','#7bb661','#a05cc9','#f4f4f4'];
+const bx=i=>70+i*100, qx=i=>560-i*95;
+const price=()=>10+4*S.prc, rate=()=>0.18*(1+0.3*S.spd);
+let spawnT=1;
+
+const U=[
+ {n:'Новый бокс',lv:()=>S.bays+'/6',max:()=>S.bays>=6,cost:()=>Math.round(60*Math.pow(1.7,S.bays-1)),go:()=>S.bays++},
+ {n:'Быстрые щётки',lv:()=>'ур. '+S.spd,max:()=>S.spd>=8,cost:()=>Math.round(35*Math.pow(1.55,S.spd)),go:()=>S.spd++},
+ {n:'Цены выше',lv:()=>'$'+price()+' за мойку',max:()=>S.prc>=8,cost:()=>Math.round(45*Math.pow(1.6,S.prc)),go:()=>S.prc++},
+ {n:'Реклама',lv:()=>'ур. '+S.ad,max:()=>S.ad>=8,cost:()=>Math.round(30*Math.pow(1.55,S.ad)),go:()=>S.ad++}
+];
+const ups=document.getElementById('ups');
+U.forEach(u=>{u.el=document.createElement('button');u.el.onclick=()=>{if(!u.max()&&S.money>=u.cost()){S.money-=u.cost();u.go();}};ups.appendChild(u.el);});
+
+function spawn(){cars.push(Object.assign({x:-60,y:320,col:cols[Math.random()*cols.length|0],st:'q',prog:0,pat:30,wp:[],bay:-1},{}));queue.push(cars[cars.length-1]);}
+function mv(c,dt){const w=c.wp[0];if(!w)return true;const dx=w[0]-c.x,dy=w[1]-c.y,d=Math.hypot(dx,dy),s=140*dt;
+ if(d<=s){c.x=w[0];c.y=w[1];c.wp.shift();}else{c.x+=dx/d*s;c.y+=dy/d*s;}return false;}
+function float(x,y,t){floats.push({x,y,t,a:1});}
+function burst(x,y,n){for(let i=0;i<n;i++)parts.push({x:x+(Math.random()-.5)*50,y:y-10+Math.random()*10,vy:-20-Math.random()*40,r:2+Math.random()*4,a:1});}
+
+function update(dt){
+ S.t+=dt;
+ spawnT-=dt;
+ if(spawnT<=0){
+  if(queue.length<5)spawn();
+  spawnT=(5/(1+0.3*S.ad))*(1.5-S.rep/100*0.7)*(0.8+Math.random()*0.4);
+ }
+ queue.forEach((c,i)=>{c.wp=[[qx(i),320]];mv(c,dt);c.pat-=dt;});
+ for(let i=queue.length-1;i>=0;i--){const c=queue[i];
+  if(c.pat<=0){queue.splice(i,1);c.st='out';c.wp=[[c.x,320],[700,320]];S.rep=Math.max(0,S.rep-6);float(c.x,c.y-30,'😡');}
+ }
+ const f=queue[0];
+ if(f&&f.x>=qx(0)-2){
+  let b=-1;for(let i=0;i<S.bays;i++)if(!bayCar[i]){b=i;break;}
+  if(b>=0){queue.shift();bayCar[b]=f;f.st='in';f.bay=b;f.wp=[[f.x,255],[bx(b),255],[bx(b),185]];}
+ }
+ for(let i=cars.length-1;i>=0;i--){const c=cars[i];
+  if(c.st==='in'){if(mv(c,dt))c.st='wash';}
+  else if(c.st==='wash'){
+   c.prog+=rate()*dt;
+   if(Math.random()<dt*14)burst(c.x,c.y,1);
+   if(c.prog>=1){c.prog=1;c.st='done';bayCar[c.bay]=null;
+    const pay=Math.round(price()*(0.8+S.rep/250));
+    S.money+=pay;S.earned+=pay;S.rep=Math.min(100,S.rep+1.5);float(c.x,c.y-30,'+$'+pay);burst(c.x,c.y,10);
+    c.wp=[[c.x,255],[700,255]];}
+  }
+  else if(c.st==='done'||c.st==='out'){if(mv(c,dt))cars.splice(i,1);}
+ }
+ parts.forEach(p=>{p.y+=p.vy*dt;p.a-=dt*0.9;});for(let i=parts.length-1;i>=0;i--)if(parts[i].a<=0)parts.splice(i,1);
+ floats.forEach(f=>{f.y-=30*dt;f.a-=dt*0.7;});for(let i=floats.length-1;i>=0;i--)if(floats[i].a<=0)floats.splice(i,1);
+ if(!S.won&&S.earned>=2500)S.won=true;
+}
+
+function rr(x,y,w,h,r){g.beginPath();g.roundRect(x,y,w,h,r);}
+function drawCar(c){
+ g.save();g.translate(c.x,c.y);
+ g.fillStyle=c.col;rr(-28,-12,56,20,6);g.fill();rr(-16,-22,32,14,5);g.fill();
+ g.fillStyle='#bfe4f5';g.fillRect(-12,-19,10,9);g.fillRect(2,-19,10,9);
+ g.globalAlpha=Math.max(0,1-c.prog)*0.7;g.fillStyle='#6b4a2b';rr(-28,-12,56,20,6);g.fill();rr(-16,-22,32,14,5);g.fill();
+ g.globalAlpha=1;g.fillStyle='#1d2630';[-16,16].forEach(x=>{g.beginPath();g.arc(x,9,6,0,7);g.fill();});
+ if(c.st==='q'){g.fillStyle='rgba(0,0,0,.25)';g.fillRect(-24,-30,48,4);g.fillStyle=c.pat>10?'#4cc38a':'#e4572e';g.fillRect(-24,-30,48*Math.max(0,c.pat/30),4);}
+ g.restore();
+}
+
+function draw(){
+ const sk=g.createLinearGradient(0,0,0,120);sk.addColorStop(0,'#8fd3ee');sk.addColorStop(1,'#d9f2fa');
+ g.fillStyle=sk;g.fillRect(0,0,W,380);
+ g.fillStyle='#3a4856';g.fillRect(0,235,W,145);
+ g.fillStyle='#fff';for(let x=0;x<W;x+=50)g.fillRect(x,288,26,3);
+ g.fillStyle='#0a9fb2';g.fillRect(0,96,W,26);
+ g.fillStyle='#ffd23f';g.font='bold 16px Trebuchet MS,sans-serif';g.textAlign='left';g.fillText('АВТОМОЙКА  ·  чисто за минуту',14,114);
+ for(let i=0;i<6;i++){
+  const x0=bx(i)-46;
+  if(i>=S.bays){
+   g.fillStyle='#8c9aa8';g.fillRect(x0,122,92,113);
+   g.fillStyle='#fff';g.textAlign='center';g.font='13px Trebuchet MS,sans-serif';
+   g.fillText(i===S.bays?'🔒':'🔒',bx(i),170);
+   if(i===S.bays)g.fillText('$'+U[0].cost(),bx(i),195);
+   continue;
+  }
+  g.fillStyle='#d4edf4';g.fillRect(x0,122,92,113);
+  g.fillStyle='#a9d6e3';g.fillRect(x0,222,92,13);
+  g.strokeStyle='#0a9fb2';g.lineWidth=3;g.strokeRect(x0,122,92,113);
+ }
+ cars.forEach(c=>{if(c.st==='q'||c.st==='out'||c.st==='done'||c.st==='in'||c.st==='wash')drawCar(c);});
+ for(let i=0;i<S.bays;i++){const c=bayCar[i];if(!c||c.st!=='wash')continue;
+  const w=Math.sin(S.t*12)*6;g.fillStyle='#ff6f91';
+  rr(bx(i)-44,140,10,70+w,5);g.fill();rr(bx(i)+34,140,10,70-w,5);g.fill();
+  g.fillStyle='rgba(0,0,0,.2)';g.fillRect(bx(i)-30,130,60,6);g.fillStyle='#ffd23f';g.fillRect(bx(i)-30,130,60*c.prog,6);}
+ parts.forEach(p=>{g.globalAlpha=Math.max(0,p.a);g.fillStyle='#fff';g.beginPath();g.arc(p.x,p.y,p.r,0,7);g.fill();});
+ g.globalAlpha=1;g.textAlign='center';g.font='bold 18px Trebuchet MS,sans-serif';
+ floats.forEach(f=>{g.globalAlpha=Math.max(0,f.a);g.fillStyle='#ffd23f';g.strokeStyle='#12304a';g.lineWidth=3;g.strokeText(f.t,f.x,f.y);g.fillText(f.t,f.x,f.y);});
+ g.globalAlpha=1;
+ if(S.won){g.fillStyle='rgba(18,48,74,.75)';g.fillRect(120,150,400,80);g.fillStyle='#ffd23f';g.font='bold 22px Trebuchet MS,sans-serif';g.fillText('Ты открыл сеть автомоек! 🏆',320,198);}
+}
+
+function hud(){
+ document.getElementById('m').firstChild.nodeValue='$'+Math.floor(S.money);
+ document.getElementById('r').firstChild.nodeValue=Math.round(S.rep)+'%';
+ document.getElementById('d').firstChild.nodeValue='День '+(1+Math.floor(S.t/60));
+ document.getElementById('g').textContent=S.won?'цель выполнена':'цель: $'+Math.floor(S.earned)+' / 2500';
+ U.forEach(u=>{const m=u.max();u.el.innerHTML='<b>'+u.n+'</b>'+u.lv()+' · <span>'+(m?'макс':'$'+u.cost())+'</span>';u.el.disabled=m||S.money<u.cost();});
+}
+
+cv.addEventListener('pointerdown',e=>{
+ const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*W/r.width,y=(e.clientY-r.top)*380/r.height;
+ for(let i=0;i<S.bays;i++){const c=bayCar[i];
+  if(c&&c.st==='wash'&&Math.abs(x-bx(i))<48&&y>120&&y<240){c.prog=Math.min(1,c.prog+0.05);burst(c.x,c.y,5);}}
+});
+
+let last=performance.now(),acc=0;
+function loop(t){const dt=Math.min(0.05,(t-last)/1000);last=t;update(dt);draw();acc+=dt;if(acc>0.15){acc=0;hud();}requestAnimationFrame(loop);}
+hud();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
