@@ -1,0 +1,21 @@
+{
+  "name": "Автомойка 3D: тайкун",
+  "short_name": "Автомойка 3D",
+  "description": "3D-тайкун про автомойку: мой машины, улучшай бизнес и переезжай в новые районы.",
+  "lang": "ru",
+  "dir": "ltr",
+  "id": "/",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#e6f5f9",
+  "theme_color": "#0a9fb2",
+  "categories": ["games", "simulation"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
